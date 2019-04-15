@@ -1,9 +1,11 @@
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import os
 import functools
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # This needs to be imported for the projection='3d' to work in plot_3d
 import numpy as np
 from scipy import integrate
+import h5py
 
 
 def generate_trajectories(n,
@@ -41,6 +43,17 @@ def lorenz(x_y_z, t0, s=10., r=28., b=2.667):
     return x_dot, y_dot, z_dot
 
 
+def make_dataset(output, *args, **kwargs):
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    with h5py.File(output) as store:
+        trajectories = generate_lorenz_trajectories(*args, **kwargs)
+        for y_ts, settings in trajectories:
+            i = len(store.keys())
+            dataset_name = 'dataset_{}'.format(i)
+            dataset = store.create_dataset(dataset_name, data=y_ts)
+            dataset.attrs.update(settings)
+
+
 def generate_lorenz_trajectories(n, t, dt,
                                  t_skip=0,
                                  lorenz_beta=8/3.,
@@ -48,9 +61,8 @@ def generate_lorenz_trajectories(n, t, dt,
                                  lorenz_rho=28.,
                                  noise_level=0.,
                                  n_ratio_same_perturbance=0.,
-                                 rng=None):
-    if rng is None:
-        rng = np.random.RandomState()
+                                 rng_seed=None):
+    rng = np.random.RandomState(rng_seed)
 
     y_ts = []
 
@@ -64,6 +76,7 @@ def generate_lorenz_trajectories(n, t, dt,
             noisy_lorenz_beta = lorenz_beta + noise_level * rng.randn() * (8 / 3)
             noisy_lorenz_s = lorenz_s + noise_level * rng.randn() * 10
             noisy_lorenz_rho = lorenz_rho + noise_level * rng.randn() * 28
+            local_rng_seed = rng.randint(2 ** 32)
             y_t = generate_trajectories(perturbance_n,
                                         t,
                                         t_skip=t_skip,
@@ -71,12 +84,14 @@ def generate_lorenz_trajectories(n, t, dt,
                                         lorenz_beta=noisy_lorenz_beta,
                                         lorenz_s=noisy_lorenz_s,
                                         lorenz_rho=noisy_lorenz_rho,
-                                        rng=rng)
-            settings = dict(beta=lorenz_beta, rho=lorenz_rho, s=lorenz_s)
+                                        rng=np.random.RandomState(local_rng_seed))
+            settings = dict(beta=noisy_lorenz_beta, rho=noisy_lorenz_rho, s=noisy_lorenz_s, dt=dt, t=t,
+                            t_skip=t_skip, rng_seed=local_rng_seed)
 
             y_ts.append((y_t, settings))
         return y_ts
     else:
+        local_rng_seed = rng.randint(2 ** 32)
         y_t = generate_trajectories(n,
                                     t,
                                     t_skip=t_skip,
@@ -84,11 +99,12 @@ def generate_lorenz_trajectories(n, t, dt,
                                     lorenz_beta=lorenz_beta,
                                     lorenz_s=lorenz_s,
                                     lorenz_rho=lorenz_rho,
-                                    rng=rng)
-        return y_t
+                                    rng=np.random.RandomState(local_rng_seed))
+        settings = dict(beta=lorenz_beta, rho=lorenz_rho, s=lorenz_s, dt=dt, t=t, t_skip=t_skip,
+                        rng_seed=local_rng_seed)
+        return [(y_t, settings)]
 
 def main():
-    rng = np.random.RandomState(1729)
     dt = 0.01
     n = 100  # Numbers of trajectories
     t_max = 10
@@ -98,18 +114,18 @@ def main():
     lorenz_rho = 28
     noise_level = 0.1
 
-    y_t = generate_lorenz_trajectories(n, t_max, dt, t_skip=t_skip, lorenz_beta=lorenz_beta, lorenz_s=lorenz_s,
-                                       lorenz_rho=lorenz_rho, noise_level=noise_level, rng=rng)
+    y_ts, settings = zip(*generate_lorenz_trajectories(n, t_max, dt, t_skip=t_skip, lorenz_beta=lorenz_beta, lorenz_s=lorenz_s,
+                                       lorenz_rho=lorenz_rho, noise_level=noise_level, rng_seed=1729))
+    y_t = np.concatenate(y_ts)
     plot_3d(y_t)
 
-    #plot_channels(t, y_t)
 
-
-def plot_channels(t, y_t):
-    num_channels = y_t.shape[0]
+def plot_channels(y_t, plot_dims=(0,1,2)):
+    num_channels, num_samples, dims = y_t.shape
+    t = np.linspace(0, 1, num_samples)
     fig, axes = plt.subplots(num_channels, 1, squeeze=True)
     for ax, y_t_i in zip(axes, y_t):
-        ax.plot(t, y_t_i)
+        ax.plot(t, y_t_i[:,plot_dims])
     plt.show()
 
 def plot_3d(y_t):
