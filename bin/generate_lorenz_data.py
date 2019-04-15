@@ -16,7 +16,7 @@ def main():
     parser.add_argument('--data-splits', help="If given, the data for each HP setting will "
                                               "be split into files with these ratios.", type=float, nargs='+')
     parser.add_argument('-dt', help="Resolution for the ODE solver", type=float, default=0.01)
-    parser.add_argument('-t', help="The time until which to run the ODE solver for", type=float, default=100)
+    parser.add_argument('-t', help="The time until which to run the ODE solver for", type=float, default=1000)
     parser.add_argument('--t-skip', help="Skip this much time at the start of each trajectories", type=float, default=3)
     parser.add_argument('--rng-seed', help="Constant to seed random number generator with", type=int)
     parser.add_argument('--hp-noise-level', help="If not zero is set, the hyper parameters for the Lorenz equations "
@@ -35,7 +35,7 @@ def main():
                         default=28)
     args = parser.parse_args()
 
-    make_dataset(args.output, args.n, args.t, args.dt, t_skip=args.t_skip,
+    make_dataset(args.output, args.n, args.t, args.dt, mode='w', t_skip=args.t_skip,
                  lorenz_beta=args.hp_beta, lorenz_s=args.hp_s, lorenz_rho=args.hp_rho,
                  noise_level=args.hp_noise_level,
                  n_ratio_same_perturbance=args.hp_same_perturbance_ratio,
