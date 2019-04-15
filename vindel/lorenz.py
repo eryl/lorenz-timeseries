@@ -43,9 +43,9 @@ def lorenz(x_y_z, t0, s=10., r=28., b=2.667):
     return x_dot, y_dot, z_dot
 
 
-def make_dataset(output, *args, **kwargs):
+def make_dataset(output, *args, mode='r+', **kwargs):
     os.makedirs(os.path.dirname(output), exist_ok=True)
-    with h5py.File(output) as store:
+    with h5py.File(output, mode=mode) as store:
         trajectories = generate_lorenz_trajectories(*args, **kwargs)
         for y_ts, settings in trajectories:
             i = len(store.keys())
