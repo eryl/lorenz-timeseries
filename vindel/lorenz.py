@@ -152,15 +152,24 @@ def main():
     plot_3d(y_t)
 
 
-def plot_channels(y_t, plot_dims=(0,1,2)):
+def plot_channels(y_t, plot_dims=(0,1,2), pca_projection=None):
     num_channels, num_samples, dims = y_t.shape
     t = np.linspace(0, 1, num_samples)
     fig, axes = plt.subplots(num_channels, 1, squeeze=True)
-    for ax, y_t_i in zip(axes, y_t):
-        ax.plot(t, y_t_i[:,plot_dims])
+    for i, ax in enumerate(axes):
+        if plot_dims:
+            plot_data = y_t[i, :, plot_dims]
+            if pca_projection is not None:
+                trajectory_pca_projection = pca_projection[i, :, np.newaxis]
+                plot_data = np.concatenate([plot_data, trajectory_pca_projection], axis=-1)
+        elif not pca_projection is None:
+            plot_data = pca_projection[i, :, np.newaxis]
+        else:
+            raise ValueError("No plot_dims given, and no pca_projection data available.")
+        ax.plot(t, plot_data)
     plt.show()
 
-def plot_3d(y_t):
+def plot_3d(y_t, pca_projection=None):
     fig = plt.figure()
     ax = fig.gca(projection='3d')
     for y_t_i in y_t:
