@@ -53,6 +53,38 @@ def make_dataset(output, *args, mode='r+', **kwargs):
             dataset = store.create_dataset(dataset_name, data=y_ts)
             dataset.attrs.update(settings)
 
+def dim_reduce_trajectories(store_file):
+    with h5py.File(store_file) as store:
+        datasets = []
+        for dataset in store.values():
+            datasets.append(dataset[:].reshape(-1, 3))
+        data = np.concatenate(datasets)
+        m = data.mean(axis=0)
+        M = data - m
+        eig_val, eig_vec = np.linalg.eigh(np.cov(M, rowvar=False))
+        eig_order = np.argsort(eig_val)
+        pca1 = eig_vec[:, eig_order[-1]]
+
+        # fig = plt.figure()
+        # ax = fig.gca(projection='3d')
+        # np.random.seed(1)
+        # data_sample_indices = np.random.choice(data.shape[0], size=1000, replace=False)
+        # ax.scatter(data[data_sample_indices,0], data[data_sample_indices,1], data[data_sample_indices,2], alpha=0.5)
+        # pca_line = np.zeros((3, 3), dtype=pca1.dtype)
+        # pca_line[0] = m - pca1*30
+        # pca_line[1] = m
+        # pca_line[2] = m + pca1*30
+        # ax.plot(pca_line[:,0], pca_line[:,1], pca_line[:,2], c='red')
+        # plt.show()
+        # return
+
+        full_dim_datasets = [(name, dataset) for name,dataset in store.items() if dataset.shape[-1] == 3]
+        for name, dataset in full_dim_datasets:
+            proj_name = name + '_pca1'
+            if not proj_name in store:
+                pca_projection = np.dot(dataset[:], pca1)
+                projection_dataset = store.create_dataset(proj_name, data=pca_projection)
+                projection_dataset.attrs['pca1'] = pca1
 
 def generate_lorenz_trajectories(n, t, dt,
                                  t_skip=0,
