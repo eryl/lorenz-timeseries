@@ -1,10 +1,7 @@
 import argparse
-import numpy as np
-import json
-import h5py
 import os.path
 
-from vindel.lorenz import make_dataset
+from lorenz.lorenz import make_dataset
 DEFAULT_DATA_PATH = os.path.join(os.path.split(os.path.dirname(__file__))[0], 'data', 'lorenz.h5')
 print(DEFAULT_DATA_PATH)
 

@@ -1,7 +1,6 @@
 import argparse
-import h5py
 
-from vindel.lorenz import dim_reduce_trajectories
+from lorenz.lorenz import dim_reduce_trajectories
 
 def main():
     parser = argparse.ArgumentParser(description="Use PCA to reduce the 3-dimensional time series to a 1D")

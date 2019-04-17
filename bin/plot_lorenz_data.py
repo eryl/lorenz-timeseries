@@ -1,7 +1,7 @@
 import argparse
 import h5py
 
-from vindel.lorenz import plot_3d, plot_channels
+from lorenz.lorenz import plot_3d, plot_channels
 
 def main():
     parser = argparse.ArgumentParser(description="Script to plot lorenz data.")
