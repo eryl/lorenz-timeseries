@@ -14,6 +14,6 @@ setup(name='lorenz',
       author_email='erik.ylipaa@ri.se',
       license='MIT',
       packages=['lorenz'],
-      install_requires=['numpy', 'h5py'],
+      install_requires=['numpy', 'h5py', 'matplotlib'],
       dependency_links=[],
       zip_safe=False)
