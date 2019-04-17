@@ -6,14 +6,14 @@ def readme():
     with open('README.txt') as f:
         return f.read()
 
-setup(name='vindel',
+setup(name='lorenz',
       version='0.1',
-      description='VindEl probabalistic models example',
-      url='https://github.com/eryl/vindel',
+      description='Time series synthetic data derived from the Lorenz system',
+      url='https://github.com/eryl/lorenz-timeseries',
       author='Erik Ylipää',
       author_email='erik.ylipaa@ri.se',
       license='MIT',
-      packages=['vindel'],
-      install_requires=['numpy', 'tensorflow'],
+      packages=['lorenz'],
+      install_requires=['numpy', 'h5py'],
       dependency_links=[],
       zip_safe=False)

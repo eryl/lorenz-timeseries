@@ -1,2 +1,2 @@
-* VindEl experiments with probabilistic forecasts and models
-This package contains experiments for experimenting with probabalistic forcasts for vind power production
+* Lorenz synthetic time series data
+This package contains modules for generating synthetic time series data using the Lorenz system.
