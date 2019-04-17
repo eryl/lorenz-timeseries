@@ -49,42 +49,51 @@ def make_dataset(output, *args, mode='r+', **kwargs):
         trajectories = generate_lorenz_trajectories(*args, **kwargs)
         for y_ts, settings in trajectories:
             i = len(store.keys())
-            dataset_name = 'dataset_{}'.format(i)
-            dataset = store.create_dataset(dataset_name, data=y_ts)
-            dataset.attrs.update(settings)
+            group_name = 'dataset_{}'.format(i)
+            group = store.create_group(group_name)
+            group.attrs.update(settings)
+            dataset_3d = group.create_dataset('lorenz3d', data=y_ts)
+            y_ts_1d, pc1 = dim_reduce_trajectories(y_ts)
+            dataset_1d = group.create_dataset('lorenz_pca1d', data=y_ts_1d)
+            dataset_1d.attrs['pc1'] = pc1
 
-def dim_reduce_trajectories(store_file):
-    with h5py.File(store_file) as store:
-        datasets = []
-        for dataset in store.values():
-            datasets.append(dataset[:].reshape(-1, 3))
-        data = np.concatenate(datasets)
-        m = data.mean(axis=0)
-        M = data - m
-        eig_val, eig_vec = np.linalg.eigh(np.cov(M, rowvar=False))
-        eig_order = np.argsort(eig_val)
-        pca1 = eig_vec[:, eig_order[-1]]
 
-        # fig = plt.figure()
-        # ax = fig.gca(projection='3d')
-        # np.random.seed(1)
-        # data_sample_indices = np.random.choice(data.shape[0], size=1000, replace=False)
-        # ax.scatter(data[data_sample_indices,0], data[data_sample_indices,1], data[data_sample_indices,2], alpha=0.5)
-        # pca_line = np.zeros((3, 3), dtype=pca1.dtype)
-        # pca_line[0] = m - pca1*30
-        # pca_line[1] = m
-        # pca_line[2] = m + pca1*30
-        # ax.plot(pca_line[:,0], pca_line[:,1], pca_line[:,2], c='red')
-        # plt.show()
-        # return
+def dim_reduce_trajectories(data, n_components=1):
+    """
+    Reduce the dimensionality of the trajectories data using PCA.
+    :param data: A 3d array with shape (num_trajectories, n, p), where n is the number of samples in the trajectory
+                 and p number of features
+    :param n_components: The number of principal components to use,
+    :return: A 3d array of shape (num_trajectories, n, n_components)
+    """
+    num_trajectories, n, p = data.shape
+    all_data = data.reshape((num_trajectories*n, p))
+    m = all_data.mean(axis=0)
+    centered_data = all_data - m
+    eig_val, eig_vec = np.linalg.eigh(np.cov(centered_data, rowvar=False))
+    eig_order = np.argsort(eig_val)[::-1]
+    principal_components = eig_vec[:, eig_order[:n_components]]  # The principal components are column vectors
 
-        full_dim_datasets = [(name, dataset) for name,dataset in store.items() if dataset.shape[-1] == 3]
-        for name, dataset in full_dim_datasets:
-            proj_name = name + '_pca1'
-            if not proj_name in store:
-                pca_projection = np.dot(dataset[:], pca1)
-                projection_dataset = store.create_dataset(proj_name, data=pca_projection)
-                projection_dataset.attrs['pca1'] = pca1
+    # fig = plt.figure()
+    # ax = fig.gca(projection='3d')
+    # np.random.seed(1)
+    # n_samples = min(num_trajectories*n, 1000)
+    # data_sample_indices = np.random.choice(all_data.shape[0], size=n_samples, replace=False)
+    # ax.scatter(all_data[data_sample_indices,0], all_data[data_sample_indices,1], all_data[data_sample_indices,2], alpha=0.5)
+    # pca_line = np.zeros((2, 3, n_components), dtype=principal_components.dtype)
+    # pca_line[0] = m[:,np.newaxis] - principal_components*30
+    # pca_line[1] = m[:,np.newaxis] + principal_components*30
+    # for i in range(n_components):
+    #     x = pca_line[:, 0, i]
+    #     y = pca_line[:, 1, i]
+    #     z = pca_line[:, 2, i]
+    #     ax.plot(x, y, z)
+    # plt.show()
+    # return
+
+    pca_projection = np.dot(data, principal_components)
+    return pca_projection, principal_components
+
 
 def generate_lorenz_trajectories(n, t, dt,
                                  t_skip=0,
@@ -169,11 +178,25 @@ def plot_channels(y_t, plot_dims=(0,1,2), pca_projection=None):
         ax.plot(t, plot_data)
     plt.show()
 
-def plot_3d(y_t, pca_projection=None):
+def plot_3d(y_t, pca_projection=None, pc1=None):
     fig = plt.figure()
     ax = fig.gca(projection='3d')
-    for y_t_i in y_t:
+    for i in range(y_t.shape[0]):
+        y_t_i = y_t[i]
         ax.plot(y_t_i[:, 0], y_t_i[:, 1], y_t_i[:, 2], lw=0.5)
+        if pca_projection is not None and pca_projection is not None:
+            m = np.mean(y_t.reshape((-1, y_t.shape[-1])), axis=0, keepdims=True)
+            projection_points = pca_projection[i] * pc1.T
+            ax.scatter(projection_points[:,0], projection_points[:,1], projection_points[:,2])
+            pca_line = np.zeros((3, 3, 1), dtype=pc1.dtype)
+            pca_line[0] = m.T - pc1
+            pca_line[1] = m.T
+            pca_line[2] = m.T + pc1
+            x = pca_line[:, 0, i]
+            y = pca_line[:, 1, i]
+            z = pca_line[:, 2, i]
+            ax.plot(x, y, z, '.-')
+
     ax.set_xlabel("X Axis")
     ax.set_ylabel("Y Axis")
     ax.set_zlabel("Z Axis")

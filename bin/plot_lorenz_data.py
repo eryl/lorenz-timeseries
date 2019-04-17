@@ -11,16 +11,19 @@ def main():
                         help="The dimensions to plot", nargs='*', type=int, default=[0,1,2])
     parser.add_argument('--plot-style',
                         help="How to plot, 2d or 3d", choices=('2d', '3d'),
-                        default='2d')
+                        default='3d')
     parser.add_argument('--plot-projection', help="Also plot the 1D projected data (if available)", action='store_true')
     args = parser.parse_args()
     with h5py.File(args.datafile) as store:
-        for dataset_name, dataset in store.items():
+        for dataset_name, group in store.items():
+            dataset = group['lorenz3d'][:]
             pca_projection = None
-            if args.plot_projection and dataset_name + '_pca1' in store:
-                pca_projection = store[dataset_name + '_pca1'][:]
+            pc1 = None
+            if args.plot_projection and 'lorenz_pca1d' in group:
+                pca_projection = group['lorenz_pca1d'][:]
+                pc1 = group['lorenz_pca1d'].attrs['pc1']
             if args.plot_style == '3d':
-                plot_3d(dataset, pca_projection=pca_projection)
+                plot_3d(dataset, pca_projection=pca_projection, pc1=pc1)
             elif args.plot_style == '2d':
                 plot_channels(dataset, plot_dims=args.plot_dims, pca_projection=pca_projection)
 
