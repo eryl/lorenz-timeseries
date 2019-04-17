@@ -32,11 +32,9 @@ def main():
                         default=28)
     args = parser.parse_args()
 
-    make_dataset(args.output, args.n, args.t, args.dt, mode='w', t_skip=args.t_skip,
-                 lorenz_beta=args.hp_beta, lorenz_s=args.hp_s, lorenz_rho=args.hp_rho,
-                 noise_level=args.hp_noise_level,
-                 n_ratio_same_perturbance=args.hp_same_perturbance_ratio,
-                 rng_seed=args.rng_seed)
+    make_dataset(args.output, args.n, args.t, args.dt, mode='w', t_skip=args.t_skip, lorenz_beta=args.hp_beta,
+                 lorenz_s=args.hp_s, lorenz_rho=args.hp_rho, noise_level=args.hp_noise_level,
+                 n_ratio_same_perturbance=args.hp_same_perturbance_ratio, rng_seed=args.rng_seed)
 
 
 
