@@ -2,12 +2,35 @@ import h5py
 import numpy as np
 
 class Dataset(object):
-    def __init__(self, dataset_path):
+    def __init__(self, dataset_path, view='pca', view_dims=(0,), noise=0):
+        """
+        Create a new dataset handler for Lorenz data.
+        :param dataset_path: The path to the HDF5 dataset.
+        :param view: Which view to use, 'pca' or 'original'. 'pca' contains the PCA projected view on the data, where
+                     the order of the basis vectors where ordered by the eigenvalues (so the first dimension correspond
+                     to the leading eigenvalue.
+        :param view_dims: The dimensions to view the data in, by default only the leading dimension is used, resulting
+                          in a 1D principal view of the data. The tuple (0,1,2) would instead give the full data.
+        :param noise: The amount of noise to add to the observation, this corresponds to the standard deviation of the
+                      Gaussian noise added to each sample.
+        """
+        self.view = view
+        self.view_dims = view_dims
+        self.noise = noise
         self.dataset_path = dataset_path
         self.store = h5py.File(dataset_path)
-        self.dataset_names = list(self.store.keys())
-        self.datasets = [self.store[dataset_name] for dataset_name in self.dataset_names]
+        self.group_names = list(self.store.keys())
+        self.datasets = []
+        for group_name, group in sorted(self.store.items()):
+            for dataset_group_name, dataset_group in sorted(group.items()):
+                group_datasets = [dataset for name, dataset in dataset_group.items() if view in name]
+                if not group_datasets:
+                    print("No datasets matching the view {} in group {}/{}".format(view, group_name, dataset_group_name))
+                self.datasets.extend(group_datasets)
         self.dataset_shapes = [dataset.shape for dataset in self.datasets]
+
+    def get_n_dims(self):
+        return len(self.view_dims)
 
     def random_iterator(self, batch_size, sequence_length, n_batches=None, rng=None):
         if rng is None:
