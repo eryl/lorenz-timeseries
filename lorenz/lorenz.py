@@ -101,24 +101,19 @@ def generate_lorenz_trajectories(n, t, dt,
                                  lorenz_s=10.,
                                  lorenz_rho=28.,
                                  noise_level=0.,
-                                 n_ratio_same_perturbance=0.,
+                                 n_per_perturbance=0.,
                                  rng_seed=None):
+
     rng = np.random.RandomState(rng_seed)
 
-    y_ts = []
-
     if noise_level > 0:
-        samples_per_hp_perturbance = max(int(np.floor(n_ratio_same_perturbance * n)), 1)
-        num_perturbances = n // samples_per_hp_perturbance
-        hp_perturbance_sizes = [samples_per_hp_perturbance] * num_perturbances
-        hp_perturbance_sizes[-1] = n - sum(hp_perturbance_sizes[:-1])
-
-        for perturbance_n in hp_perturbance_sizes:
+        n_perturbances = int(np.ceil(n / n_per_perturbance))
+        for i in range(n_perturbances):
             noisy_lorenz_beta = lorenz_beta + noise_level * rng.randn() * (8 / 3)
             noisy_lorenz_s = lorenz_s + noise_level * rng.randn() * 10
             noisy_lorenz_rho = lorenz_rho + noise_level * rng.randn() * 28
             local_rng_seed = rng.randint(2 ** 32)
-            y_t = generate_trajectories(perturbance_n,
+            y_t = generate_trajectories(n_per_perturbance,
                                         t,
                                         t_skip=t_skip,
                                         dt=dt,
@@ -128,9 +123,7 @@ def generate_lorenz_trajectories(n, t, dt,
                                         rng=np.random.RandomState(local_rng_seed))
             settings = dict(beta=noisy_lorenz_beta, rho=noisy_lorenz_rho, s=noisy_lorenz_s, dt=dt, t=t,
                             t_skip=t_skip, rng_seed=local_rng_seed)
-
-            y_ts.append((y_t, settings))
-        return y_ts
+            yield (y_t, settings)
     else:
         local_rng_seed = rng.randint(2 ** 32)
         y_t = generate_trajectories(n,
@@ -143,7 +136,8 @@ def generate_lorenz_trajectories(n, t, dt,
                                     rng=np.random.RandomState(local_rng_seed))
         settings = dict(beta=lorenz_beta, rho=lorenz_rho, s=lorenz_s, dt=dt, t=t, t_skip=t_skip,
                         rng_seed=local_rng_seed)
-        return [(y_t, settings)]
+        yield (y_t, settings)
+
 
 def main():
     dt = 0.01
