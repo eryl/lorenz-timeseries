@@ -75,41 +75,109 @@ def make_dataset(output, *args, mode='r+', **kwargs):
             dataset_pca.attrs['pc'] = pc
 
 
-def dim_reduce_trajectories(data, n_components=1):
+def split_dataset(dataset_path, splits, normalize=False, rng=None):
     """
-    Reduce the dimensionality of the trajectories data using PCA.
-    :param data: A 3d array with shape (num_trajectories, n, p), where n is the number of samples in the trajectory
-                 and p number of features
-    :param n_components: The number of principal components to use,
-    :return: A 3d array of shape (num_trajectories, n, n_components)
+    Splits a lorenz hdf5 store into the splits defined by splits.
+    :param dataset_path: The store to split
+    :param splits: A list of (name, ratio) tuples, where the name will be suffixed to the original store path and the
+                   ratio is the fraction of samples from the original store which ends up in this part.
+    :param normalize: If set to True, the ratios will be normalized so that they sum to 1, allowing ratios to be
+                      specified in other proportions (e.g. [20, 80]).
+    :param rng: A numpy random state to use for sampling the splits.
+    :return: None. The splits will be written to new HDF5 files using the split names.
     """
-    num_trajectories, n, p = data.shape
-    all_data = data.reshape((num_trajectories*n, p))
-    m = all_data.mean(axis=0)
-    centered_data = all_data - m
-    eig_val, eig_vec = np.linalg.eigh(np.cov(centered_data, rowvar=False))
-    eig_order = np.argsort(eig_val)[::-1]
-    principal_components = eig_vec[:, eig_order[:n_components]]  # The principal components are column vectors
+    if rng is None:
+        rng = np.random.RandomState()
+    split_names, ratios = zip(*splits)
+    ratios_sum = sum(ratios)
+    if ratios_sum < 1.:
+        print("Warning: The ratios sum to {} < 1. The remaining trajectories will be unused.")
+        # If not all of the dataset is used (the ratios sum to a value less than 1, we add a dummy
+        # ratio
+        split_names.append(None)
+        ratios.append(1. - ratios_sum)
+        ratios_sum = 1.
+    if ratios_sum > 1.:
+        if normalize:
+            ratios = [r / ratios_sum for r in ratios]
+        else:
+            raise ValueError("The ratios sum to a value greater than 1, use --normalize if this is intentional")
 
-    # fig = plt.figure()
-    # ax = fig.gca(projection='3d')
-    # np.random.seed(1)
-    # n_samples = min(num_trajectories*n, 1000)
-    # data_sample_indices = np.random.choice(all_data.shape[0], size=n_samples, replace=False)
-    # ax.scatter(all_data[data_sample_indices,0], all_data[data_sample_indices,1], all_data[data_sample_indices,2], alpha=0.5)
-    # pca_line = np.zeros((2, 3, n_components), dtype=principal_components.dtype)
-    # pca_line[0] = m[:,np.newaxis] - principal_components*30
-    # pca_line[1] = m[:,np.newaxis] + principal_components*30
-    # for i in range(n_components):
-    #     x = pca_line[:, 0, i]
-    #     y = pca_line[:, 1, i]
-    #     z = pca_line[:, 2, i]
-    #     ax.plot(x, y, z)
-    # plt.show()
-    # return
+    with h5py.File(dataset_path) as original_store:
+        # A store consists of a three-deep nesting. The first level are Lorenz hyper parameter groups. Each entry in
+        # such a group share the same hyper parameters for the Lorenz system (the rho, s and beta parameters) so they
+        # are sampled trajectories of the same system.
+        # The second level group is the hyper parameters for the sampling procedure: The total time, the random seed,
+        # the time resolution and the time skip.
+        # The final level are pairs of datasets, these are the original dataset with a name '{shape}-original' and the
+        # PCA projection with the name '{shape}-pca', where {shape} is the shape of the respective datasets.
+        # The splits will sample evenly from all groups
+        store_base_name, ext = os.path.splitext(dataset_path)
+        split_stores = []
+        for split_name in split_names:
+            if split_name is None:
+                continue
+            path = store_base_name + '_' + split_name + ext
+            split_stores.append(h5py.File(path, 'w'))
 
-    pca_projection = np.dot(data, principal_components)
-    return pca_projection, principal_components
+        for system_group_name, system_group in original_store.items():
+            for store in split_stores:
+                g = store.create_group(system_group_name)
+                g.attrs.update(system_group.attrs)
+
+            for ode_settings_name, ode_settings in system_group.items():
+                ode_settings_path = system_group_name + '/' + ode_settings_name
+                if len(ode_settings) != 2:
+                    raise NotImplementedError("The splitting is not implemented for settting groups which have more than "
+                                              "two datasets. Group in question: {}".format(ode_settings_path))
+                for store in split_stores:
+                    g = store.create_group(ode_settings_path)
+                    g.attrs.update(ode_settings.attrs)
+
+                original_dataset_name, original_dataset = None, None
+                pca_dataset_name, pca_dataset = None, None
+                for dataset_name, dataset in ode_settings.items():
+                    if 'original' in dataset_name:
+                        original_dataset_name, original_dataset = dataset_name, dataset
+                    elif 'pca' in dataset_name:
+                        pca_dataset_name, pca_dataset = dataset_name, dataset
+                assert original_dataset is not None and pca_dataset is not None, "Could not find the datasets"
+                n_trajectories = original_dataset.shape[0]
+                if n_trajectories < len(ratios):
+                    raise ValueError("Dataset {} doesn't have enough trajectories for split".format(system_group_name +
+                                                                                                    '/' + ode_settings_name
+                                                                                                    + '/' + original_dataset))
+                split_ns = [int(np.floor(r*n_trajectories)) for r in ratios[:-1]]
+                split_ns.append(n_trajectories - sum(split_ns))
+                # Now redistribute if there are empty splits
+                while True:
+                    max_n_index = np.argmax(split_ns)
+                    min_n_index = np.argmin(split_ns)
+                    if split_ns[min_n_index] == 0:
+                        split_ns[max_n_index] -= 1
+                        split_ns[min_n_index] += 1
+                    else:
+                        break
+
+                assert sum(split_ns) == original_dataset.shape[0]
+                indices = np.arange(original_dataset.shape[0])
+                rng.shuffle(indices)
+                start = 0
+                for n, split_store in zip(split_ns, split_stores):
+                    end = start + n
+                    split_indices = indices[start:end]
+                    split_data_original = original_dataset[:][split_indices]
+                    split_data_pca = pca_dataset[:][split_indices]
+                    ds_original = split_store[ode_settings_path].create_dataset(original_dataset_name, data=split_data_original)
+                    ds_pca = split_store[ode_settings_path].create_dataset(pca_dataset_name, data=split_data_pca)
+                    ds_original.attrs.update(original_dataset.attrs)
+                    ds_pca.attrs.update(pca_dataset.attrs)
+                    start = end
+
+
+        for store in split_stores:
+            store.close()
+
 
 
 def generate_lorenz_trajectories(n, t, dt,
