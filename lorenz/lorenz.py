@@ -9,11 +9,12 @@ import h5py
 
 # We really want all data to use the same principal components, otherwise it'll be even more impossible to
 # differentiate between the different hyper parameters and starting conditions. This is where we calculate those
-PRINCIPAL_COMPONENTS_PATH = os.path.join(os.path.split(os.path.dirname(__file__))[0], 'data', 'principal_components.npz')
-def _calculate_canonical_principal_components():
+PRINCIPAL_COMPONENTS_PATH = os.path.join(os.path.split(os.path.dirname(__file__))[0], 'data', 'standardize_statistics.npz')
+def _calculate_canonical_statistics():
     if os.path.exists(PRINCIPAL_COMPONENTS_PATH):
-        return
-    print("Generating canonical principal components, this might take a couple of minutes")
+        principal_components = np.load(PRINCIPAL_COMPONENTS_PATH)
+        return principal_components
+    print("Generating canonical summary statistics and principal components, this might take a couple of minutes")
     n = 1000
     t = 10
     t_skip = 1
@@ -24,16 +25,19 @@ def _calculate_canonical_principal_components():
     constant_hp_trajectories = [y_t_s.reshape(-1, 3) for y_t_s, _ in generate_lorenz_trajectories(n, t, dt, t_skip,
                                                                                    noise_level=0, rng_seed=rng_seed)]
     data = np.concatenate(noisy_hp_trajectories + constant_hp_trajectories, axis=0)
-    m = data.mean(axis=0)
+    m = data.mean(axis=0, keepdims=True)
     centered_data = data - m
-    eig_val, eig_vec = np.linalg.eigh(np.cov(centered_data, rowvar=False))
+    std = centered_data.std(axis=0, keepdims=True)
+    standardized_data = centered_data / std
+    eig_val, eig_vec = np.linalg.eigh(np.cov(standardized_data, rowvar=False))
     eig_order = np.argsort(eig_val)[::-1]
     principal_components = eig_vec[:,eig_order]
     principal_values = eig_val[eig_order]
 
     os.makedirs(os.path.dirname(PRINCIPAL_COMPONENTS_PATH), exist_ok=True)
-    np.savez(PRINCIPAL_COMPONENTS_PATH, pc=principal_components, pv=principal_values)
-    print("Canonical principal components saved to {}".format(PRINCIPAL_COMPONENTS_PATH))
+    np.savez(PRINCIPAL_COMPONENTS_PATH, pc=principal_components, pv=principal_values, mean=m, std=std)
+    print("Canonical principal components and summary statistics saved to {}".format(PRINCIPAL_COMPONENTS_PATH))
+    return dict(pc=principal_components, pv=principal_values, mean=m, std=std)
 
 
 def lorenz(x_y_z, t0, s=10., r=28., b=2.667):
@@ -46,8 +50,10 @@ def lorenz(x_y_z, t0, s=10., r=28., b=2.667):
 
 def make_dataset(output, *args, mode='r+', **kwargs):
     os.makedirs(os.path.dirname(output), exist_ok=True)
-    _calculate_canonical_principal_components()
-
+    stats = _calculate_canonical_statistics()
+    mean = stats['mean']
+    std = stats['std']
+    pc = stats['pc']
     # A store consists of a three-deep nesting. The first level are Lorenz hyper parameter groups. Each entry in
     # such a group share the same hyper parameters for the Lorenz system (the rho, s and beta parameters) so they
     # are sampled trajectories of the same system.
@@ -69,8 +75,9 @@ def make_dataset(output, *args, mode='r+', **kwargs):
             dataset_group.attrs['dt'] = settings['dt']
             dataset_group.attrs['t_skip'] = settings['t_skip']
             dataset_group.attrs['rng_seed'] = settings['rng_seed']
+            y_ts = (y_ts - mean)/std  # Standardize the data
             dataset_group.create_dataset('{}-original'.format(y_ts.shape), data=y_ts)
-            y_ts_pca, pc = dim_reduce_trajectories(y_ts)
+            y_ts_pca = np.dot(y_ts, pc)
             dataset_pca = dataset_group.create_dataset('{}-pca'.format(y_ts_pca.shape), data=y_ts_pca)
             dataset_pca.attrs['pc'] = pc
 
@@ -346,8 +353,7 @@ def plot_3d(y_t, pca_projection=None, pc1=None):
     ax.set_ylabel("Y Axis")
     ax.set_zlabel("Z Axis")
     ax.set_title("Lorenz Attractor")
-    plt.show()
 
 
 if __name__ == '__main__':
-    _calculate_canonical_principal_components()
+    _calculate_canonical_statistics()
