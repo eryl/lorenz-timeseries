@@ -52,7 +52,9 @@ class Dataset(object):
             start = batch_i*batch_size
             end = start + batch_size
             indices = batch_indices[start: end]
-            data = np.array([datasets[i][j, k*sequence_length: (k+1)*sequence_length] for i,j,k in indices])
+            data = np.array([datasets[i][j, k*sequence_length: (k+1)*sequence_length][:,self.view_dims] for i,j,k in indices])
+            if self.noise > 0:
+                data += rng.normal(scale=self.noise, size=data.shape)
             yield data
 
 
