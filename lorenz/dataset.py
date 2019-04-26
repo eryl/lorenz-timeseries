@@ -46,6 +46,8 @@ class Dataset(object):
         rng.shuffle(batch_indices)
         if n_batches is None:
             n_batches = len(batch_indices) // batch_size
+        else:
+            n_batches = min(len(batch_indices) // batch_size, n_batches)
 
         datasets = self.datasets
         for batch_i in range(n_batches):
