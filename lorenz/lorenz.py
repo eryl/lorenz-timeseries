@@ -186,7 +186,7 @@ def generate_lorenz_trajectories(n, t, dt,
                                  lorenz_s=10.,
                                  lorenz_rho=28.,
                                  noise_level=0.,
-                                 n_per_perturbance=0.,
+                                 n_per_perturbance=1,
                                  rng_seed=None):
 
     rng = np.random.RandomState(rng_seed)
