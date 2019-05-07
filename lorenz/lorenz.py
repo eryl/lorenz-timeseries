@@ -258,6 +258,20 @@ def generate_trajectories(n,
     return y_t[:, int(t_skip/dt):, :]
 
 
+def step(y0, rho, s, beta, t_max, dt):
+    y_t = solve(y0, rho, s, beta, t_max, dt)
+    return y_t[-1]
+
+
+def solve(y0, rho, s, beta, t_max, dt):
+    dts = int(t_max / dt)
+    t = np.linspace(0, t_max, dts)
+
+    f = functools.partial(lorenz, r=rho, s=s, b=beta)
+    y_t = integrate.odeint(f, y0, t)
+
+    return y_t
+
 def dim_reduce_trajectories(data, n_components=None):
     """
     Reduce the dimensionality of the trajectories data using PCA.
@@ -353,6 +367,99 @@ def plot_3d(y_t, pca_projection=None, pc1=None):
     ax.set_ylabel("Y Axis")
     ax.set_zlabel("Z Axis")
     ax.set_title("Lorenz Attractor")
+
+
+class LorenzSystem(object):
+    def __init__(self,
+                 system_noise=0.1, observation_noise=1,
+                 rho=28., s=10., beta=2.667,
+                 init_range_x=(-20., 20),
+                 init_range_y=(-30., 30),
+                 init_range_z=(0.0, 50.),
+                 init_t=2,
+                 dt=0.01,
+                 rng=None):
+        if rng is None:
+            rng = np.random.RandomState()
+        self.rng = rng
+        self.beta = beta + system_noise * rng.randn() * beta
+        self.s = s + system_noise * rng.randn() * s
+        self.rho = rho + system_noise * rng.randn() * rho
+        self.dt = dt
+        y_0 = [(b - a) * rng.random_sample() for a, b in (init_range_x, init_range_y, init_range_z)]
+        # We run each system forwards for t_init time
+        self.y = step(y_0, self.rho, self.s, self.beta, init_t, dt)
+
+    def observe(self):
+        return self.y + self.rng.randn()*self.observation_noise
+
+    def step(self, t):
+        self.y = step(self.y, self.rho, self.s, self.beta, t, self.dt)
+
+    def generate_forecasts(self, ensemble_size, t, dt=None):
+        if dt is None:
+            dt = self.dt
+        trajectories = []
+        for i in range(ensemble_size):
+            observation = self.observe()
+            trajectory = solve(observation, self.rho, self.s, self.beta, t, dt)
+            trajectories.append(trajectory)
+        return trajectories
+
+
+class DynamicDataset(object):
+    """
+    This class implements a \"dynamic\" version of the Lorenz system(s) instead of being backed by a pregenerated
+    dataset.
+    """
+    def __init__(self, n_systems,
+                 system_noise=0.1,
+                 observation_noise=1,
+                 s=10., rho=28., beta=2.667,
+                 rng=None,
+                 init_range_x=(-20., 20),
+                 init_range_y=(-30., 30),
+                 init_range_z=(0.0, 50.),
+                 init_t=2,
+                 dt=0.01
+                 ):
+        """
+        Create a new dynamic Lorenz dataset.
+        :param n_systems: How many different systems are there? Each system will have it's own random hyper parameters.
+        :param rng: a numpy RandomState used to create the systems
+        """
+        if rng is None:
+            rng = np.random.RandomState()
+        self.rng = rng
+        self.n_systems = n_systems
+        self.system_noise = system_noise
+        self.observation_noise = observation_noise
+        self.s = s
+        self.rho = rho
+        self.beta = beta
+        self.dt = dt
+        self.systems = [LorenzSystem(system_noise, observation_noise,
+                                     rho, s, beta,
+                                     init_range_x, init_range_y, init_range_z,
+                                     init_t, dt,
+                                     rng)]
+
+
+    def observe_system(self, system_id):
+        return self.systems[system_id].observe()
+
+    def step(self, system_id, t):
+        self.systems[system_id].step(t)
+
+    def step_all(self, t):
+        for sys in self.systems:
+            sys.step(t)
+
+    def generate_system_forecasts(self, system_id, ensemble_size, t, dt=None):
+        return self.systems[system_id].generate_forecasts(ensemble_size, t, dt)
+
+
+
 
 
 if __name__ == '__main__':
